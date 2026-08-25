@@ -1,0 +1,11 @@
+# Local run logs -- the CSV is the only thing worth versioning
+scrape.log
+cron.log
+
+# Scratch from merging collectors
+merged.csv
+laptop.csv
+
+__pycache__/
+*.pyc
+.DS_Store

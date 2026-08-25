@@ -1,0 +1,71 @@
+name: poll recwell counts
+
+on:
+  schedule:
+    # Every 30 minutes. GitHub commonly runs these 5-20 minutes late, and under
+    # load can skip a slot entirely. Neither matters here: analyze.py buckets by
+    # the count's own timestamp, and staff only enter counts every ~hour anyway.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:        # adds a "Run workflow" button for testing
+
+permissions:
+  contents: write           # required to commit the CSV back to the repo
+
+# If a run is somehow still going when the next fires, let it finish rather than
+# having two jobs push to the same branch.
+concurrency:
+  group: poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    env:
+      # Runners are UTC. The feed's timestamps are Eastern with no timezone
+      # attached, so without this observed_lag_min is off by 4-5 hours. The
+      # heatmap itself is unaffected (it uses the feed's own timestamps), but
+      # there's no reason to record a wrong column.
+      TZ: America/Indiana/Indianapolis
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # full history so `pull --rebase` behaves
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Poll the API
+        run: python scrape.py
+
+      - name: Commit any new counts
+        run: |
+          if [ ! -f occupancy.csv ]; then
+            echo "no CSV yet -- nothing to commit"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add occupancy.csv
+
+          # "No new counts since last run" is the normal case most of the time,
+          # not a failure -- staff update roughly hourly and we poll twice that.
+          if git diff --staged --quiet; then
+            echo "no new counts this run"
+            exit 0
+          fi
+
+          git commit -m "counts $(date -u +%Y-%m-%dT%H:%MZ)"
+
+          for i in 1 2 3; do
+            if git pull --rebase --autostash && git push; then
+              echo "pushed"
+              exit 0
+            fi
+            echo "push attempt $i failed, retrying"
+            sleep 5
+          done
+          echo "could not push after 3 attempts"
+          exit 1
