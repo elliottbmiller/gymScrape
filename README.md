@@ -1,5 +1,5 @@
 # RecWell occupancy logger
-
+testing priority based on commit
 Polls Purdue RecWell's facility counts and builds a weekday × hour picture of
 when each space is empty.
 
